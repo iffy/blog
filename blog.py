@@ -15,7 +15,7 @@ from pygments.lexers import get_lexer_by_name
 from pygments.formatters import HtmlFormatter
 
 
-from jinja2 import nodes, Environment
+from jinja2 import nodes, Environment, FileSystemLoader
 from jinja2.ext import Extension
 
 
@@ -128,11 +128,13 @@ class FormatError(Exception):
     pass
 
 
-def renderFile(filename):
+def renderFile(filename, include_dirs=None):
     """
     Render a file for posting.  Everything until the first --- on a line by
     itself is configuration (title, tags, etc...)
-    """    
+    """
+    include_dirs = include_dirs or []
+    jenv.loader = FileSystemLoader(include_dirs)
     fh = open(filename, 'r')
     chunks = fh.read().split('\n---\n', 1)
     if len(chunks) == 1:
@@ -196,9 +198,28 @@ class RenderOptions(usage.Options):
                                 "will be passed title and "
                                 "content variables."],
     ]
+    
+    def __init__(self):
+        usage.Options.__init__(self)
+        self['include'] = []
+
+
+    def opt_include(self, path):
+        """
+        Path from which to load sourced templates.  May be specified multiple
+        times.  The directory containing the source file will always be
+        available.
+        """
+        self['include'].append(path)
+    opt_i = opt_include
+
 
     def parseArgs(self, source):
         self['source'] = source
+
+
+    def postOptions(self):
+        self['include'].append(FilePath(self['source']).parent().path)
 
 
 
@@ -217,9 +238,26 @@ class PostOptions(usage.Options):
         ['blog', 'b', None, "Blog title; if not given, blogs will be listed"],
     ]
 
+    def __init__(self):
+        usage.Options.__init__(self)
+        self['include'] = []
+
+
+    def opt_include(self, path):
+        """
+        Path from which to load sourced templates.  May be specified multiple
+        times.
+        """
+        self['include'].append(path)
+    opt_i = opt_include
+
 
     def parseArgs(self, source):
         self['source'] = source
+
+
+    def postOptions(self):
+        self['include'].append(FilePath(self['source']).parent().path)
 
 
 
@@ -264,7 +302,7 @@ def render(options):
     Renders a file to stdout surrounding it by a base template
     if supplied
     """
-    rendered = renderFile(options['source'])
+    rendered = renderFile(options['source'], options['include'])
     
     # mimick blogger's overuse of <br />
     rendered['body'] = rendered['body'].replace('\n', '<br />')
@@ -283,7 +321,7 @@ def renderAndPost(options):
     """
     Renders a file and posts it to blogger.
     """
-    rendered = renderFile(options['source'])
+    rendered = renderFile(options['source'], options['include'])
     title = rendered['headers']['title']
 
     s = makeService(options['username'])

@@ -3,6 +3,10 @@ blog
 
 Script to render code snippets and publish to Blogger
 
+Depends on `gdata` library:
+
+    pip install gdata
+
 Usage:
 
     python blog.py --help
