@@ -38,13 +38,10 @@ class ShellExtension(Extension):
                                [], [], body).set_lineno(lineno)
 
     def _shell(self, args, caller):
-        p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE)
+        p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE, cwd='.')
         stdin = caller()
         stdout, _ = p.communicate(stdin)
-        lexer = get_lexer_by_name('text', stripall=False)
-        formatter = HtmlFormatter(linenos=False, cssclass="output")
-        result = highlight(stdout, lexer, formatter)
-        return result
+        return stdout
 
 
 
