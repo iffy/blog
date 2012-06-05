@@ -10,6 +10,7 @@ import atom
 import sys
 import getpass
 import re
+import subprocess
 from pygments import highlight
 from pygments.lexers import get_lexer_by_name
 from pygments.formatters import HtmlFormatter
@@ -17,6 +18,34 @@ from pygments.formatters import HtmlFormatter
 
 from jinja2 import nodes, Environment, FileSystemLoader
 from jinja2.ext import Extension
+
+class ShellExtension(Extension):
+    """
+    Executes shell commands and gets output.
+    """
+    
+    tags = set(['shell'])
+    
+    def __init__(self, environment):
+        super(ShellExtension, self).__init__(environment)
+
+
+    def parse(self, parser):
+        lineno = parser.stream.next().lineno
+        args = [parser.parse_expression()]
+        body = parser.parse_statements(['name:endshell'], drop_needle=True)
+        return nodes.CallBlock(self.call_method('_shell', args),
+                               [], [], body).set_lineno(lineno)
+
+    def _shell(self, args, caller):
+        p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE)
+        stdin = caller()
+        stdout, _ = p.communicate(stdin)
+        lexer = get_lexer_by_name('text', stripall=False)
+        formatter = HtmlFormatter(linenos=False, cssclass="output")
+        result = highlight(stdout, lexer, formatter)
+        return result
+
 
 
 class PygmentsExtension(Extension):
@@ -45,7 +74,7 @@ class PygmentsExtension(Extension):
         return result
 
 
-jenv = Environment(extensions=[PygmentsExtension])
+jenv = Environment(extensions=[PygmentsExtension, ShellExtension])
 
 def getPosts(bservice, blog_id, title=None):
     """
