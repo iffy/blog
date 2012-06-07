@@ -60,13 +60,17 @@ class PygmentsExtension(Extension):
         lineno = parser.stream.next().lineno
         args = [parser.parse_expression()]
         
+        if parser.stream.skip_if('comma'):
+            args.append(parser.parse_expression())
+        else:
+            args.append(nodes.List([]))
         body = parser.parse_statements(['name:endcode'], drop_needle=True)
         return nodes.CallBlock(self.call_method('_highlight', args),
                                [], [], body).set_lineno(lineno)
 
-    def _highlight(self, language, caller):
+    def _highlight(self, language, hl_lines, caller):
         lexer = get_lexer_by_name(language, stripall=False)
-        formatter = HtmlFormatter(linenos=False, cssclass="code " + language)
+        formatter = HtmlFormatter(linenos=False, cssclass="code " + language, hl_lines=hl_lines)
         result = highlight(caller(), lexer, formatter)
         return result
 
