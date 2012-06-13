@@ -64,14 +64,28 @@ class PygmentsExtension(Extension):
             args.append(parser.parse_expression())
         else:
             args.append(nodes.List([]))
+        
+        if parser.stream.skip_if('comma'):
+            args.append(parser.parse_expression())
+        else:
+            args.append(nodes.List([]))
         body = parser.parse_statements(['name:endcode'], drop_needle=True)
         return nodes.CallBlock(self.call_method('_highlight', args),
                                [], [], body).set_lineno(lineno)
 
-    def _highlight(self, language, hl_lines, caller):
+    def _highlight(self, language, hl_lines, show_lines, caller):
         lexer = get_lexer_by_name(language, stripall=False)
+        if show_lines:
+            hl_lines = [x-show_lines[0]+1 for x in hl_lines]
         formatter = HtmlFormatter(linenos=False, cssclass="code " + language, hl_lines=hl_lines)
-        result = highlight(caller(), lexer, formatter)
+        lines = caller().split('\n')
+        if show_lines:
+            start, end = show_lines[0], show_lines[1]
+            whole = lines
+            lines = []
+            for idx in xrange(start-1, end):
+                lines.append(whole[idx])
+        result = highlight('\n'.join(lines), lexer, formatter)
         return result
 
 
