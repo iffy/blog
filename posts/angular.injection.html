@@ -1,0 +1,297 @@
+title:Angular injection
+---
+{% macro therefore() %}
+<span style="font-size: 300%; position: absolute; left: -1em; font-weight: bold; color: #08c; margin-top: -0.5em;">&there4;</span>
+{% endmacro %}
+
+{% macro showAndRunJs() %}
+{% set thecode = caller() %}
+{% code('javascript') %}
+{{ thecode }}{% endcode %}
+<script>
+{{ thecode }}
+</script>
+{% endmacro %}
+
+<p>tl;dr is marked throughout by &there4;</p>
+
+<p>
+    I don't like magical code.  AngularJS is magical.  I must fix this.
+</p>
+
+<img style="border: 0; box-shadow: none;" src="http://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Magic_wand.svg/200px-Magic_wand.svg.png">
+
+<p>
+    Dependency injection was one of <a href="http://angularjs.org" target="_blank">AngularJS's</a> first evil magicks I encountered.  The idea that calling
+    this function
+
+{% code('javascript') %}
+function myFunction($scope, $http) {
+    ...
+}
+{% endcode %}
+
+    will magically reach out to the universe and grab the correct values for
+    <code>$scope</code> and <code>$http</code> runs contrary to all the
+    JavaScript I've ever used.  You can't do that!
+</p>
+
+<p>
+    So I dug in to discover the magicks.  And now it's not magic!  It's great!
+    It's rougly equivalent to <code>import</code> in Python or
+    <code>require</code> in Ruby.  Here's how it works:
+</p>
+
+
+<h2>Modules</h2>
+
+<p>
+    AngularJS groups injectable things together into modules.  The following
+    code will:
+    <ol>
+        <li>make a module named <code>woods</code></li>
+        <li>add a provider to the <code>woods</code> module named
+            <code>Eeyore</code>, which has a constant value</li>
+    </ol>
+
+{% code('javascript') %}
+var woods = angular.module('woods', []);
+woods.value('Eeyore', 'sad')
+{% endcode %}
+</p>
+
+<p>
+    Here's some of the source for the <code>module</code> function
+    plus context (see the
+    <a href="https://github.com/angular/angular.js/blob/v1.1.5/src/loader.js#L67" target="_blank">full source here</a> &mdash; the comments are helpful):
+{% code('javascript') %}
+// from setupModuleLoader()
+function ensure(obj, name, factory) {
+    return obj[name] || (obj[name] = factory());
+}
+
+// ...
+
+var modules = {};
+return function module(name, requires, configFn) {
+    // ...
+    return ensure(modules, name, function() {
+        // ...
+        var moduleInstance = {
+            // ...
+            requires: requires,
+            name: name,
+            provider: invokeLater('$provide', 'provider'),
+            factory: invokeLater('$provide', 'factory'),
+            service: invokeLater('$provide', 'service'),
+            value: invokeLater('$provide', 'value'),
+            constant: invokeLater('$provide', 'constant', 'unshift'),
+            filter: invokeLater('$filterProvider', 'register'),
+            controller: invokeLater('$controllerProvider', 'register'),
+            directive: invokeLater('$compileProvider', 'directive'),
+            // ...
+        };
+        // ...
+        return moduleInstance;
+        // ...
+    });
+};
+{% endcode %}
+</p>
+
+<p>
+    <ol>
+        <li>
+            The <code>ensure(obj, name, factory)</code> function makes sure that <code>obj</code> has an attribute named <code>name</code>, creating it by calling <code>factory</code> if it doesn't.
+        </li>
+        <li>
+            The <code>module(name, requires, configFn)</code> function adds a <code>moduleInstance</code> named <code>name</code> to the global-ish <code>modules</code> object (by using <code>ensure</code>).
+        </li>
+    </ol>
+</p>
+
+<p>
+    {{ therefore() }} <code>angular.module(...)</code> adds a module to some global-ish module registry.
+</p>
+
+
+<h2>Injectors</h2>
+
+<p>
+    Injectors find providers from among the modules it knows about.  By default, AngularJS creates an injector through the bootstrapping process.  We can also make an injector with <code>angular.injector()</code> and use it to access providers within modules:
+{% code('javascript') %}
+// Run this in a JavaScript console (on a page that has AngularJS)
+
+// Make a woods module with an Eeyore provider
+var woods = angular.module('woods', []);
+woods.value('Eeyore', 'sad')
+
+// Make an injector that knows about the 'woods' module.
+var injector = angular.injector(['woods'])
+
+// Get poor Eeyore out of the module
+injector.get('Eeyore');
+// -> "sad"
+{% endcode %}
+</p>
+
+<p>
+  The creation of injectors and how they know where things are is somewhat recursive (and the code is a little hard to read).  I will unravel that magic in another post as it was making this post too long.  For now, just know that
+</p>
+
+<p>
+  {{ therefore() }} Injectors can find the providers you add to modules (e.g. through <code>.value(...)</code> or <code>.factory(...)</code>) and can find modules that were previously added to the global-ish module registry.
+</p>
+
+
+
+
+<h2>Invoke</h2>
+
+<p>
+  Using an injector, we can invoke functions with dependency injection:
+{% code('javascript') %}
+// Run this in a JavaScript console (on a page that has AngularJS)
+
+// Make a woods module with an Eeyore provider
+var woods = angular.module('woods', []);
+woods.value('Eeyore', 'sad')
+
+// Make an injector that knows about the 'woods' module.
+var injector = angular.injector(['woods'])
+
+// Imbue a function with sadness
+function eatEmotion(Eeyore) {
+  return 'I am ' + Eeyore;
+}
+injector.invoke(eatEmotion);
+// -> "I am sad"
+{% endcode %}
+</p>
+
+  
+
+<h2>But how does it KNOOooooowwwWWW??</h2>
+
+<p>
+  How does AngularJS know the names of the arguments a function is expecting?  How does it know that my <code>weather</code> function's arguments is named <code>sunny</code>?
+{% code('javascript') %}
+function weather(sunny) {
+  ...
+}
+{% endcode %}
+</p>
+
+<p>
+  That's an internal detail of <code>weather</code>, inaccessible from the outside, no?  I've done introspection with Python, but this is JavaScript.
+</p>
+
+<p>
+  How AngularJS gets the argument names made me laugh out loud when I found it.  It's a dirty (effective) trick found in the <code>annontate</code> function (<a href="https://github.com/angular/angular.js/blob/v1.1.5/src/auto/injector.js#L45" target="_blank">full source</a>):
+{% code('javascript') %}
+var FN_ARGS = /^function\s*[^\(]*\(\s*([^\)]*)\)/m;
+var FN_ARG_SPLIT = /,/;
+var FN_ARG = /^\s*(_?)(\S+?)\1\s*$/;
+var STRIP_COMMENTS = /((\/\/.*$)|(\/\*[\s\S]*?\*\/))/mg;
+function annotate(fn) {
+  var $inject,
+      fnText,
+      argDecl,
+      last;
+
+  if (typeof fn == 'function') {
+    if (!($inject = fn.$inject)) {
+      $inject = [];
+      fnText = fn.toString().replace(STRIP_COMMENTS, '');
+      argDecl = fnText.match(FN_ARGS);
+      forEach(argDecl[1].split(FN_ARG_SPLIT), function(arg){
+        arg.replace(FN_ARG, function(all, underscore, name){
+          $inject.push(name);
+        });
+      });
+      fn.$inject = $inject;
+    }
+  } else if (isArray(fn)) {
+    last = fn.length - 1;
+    assertArgFn(fn[last], 'fn');
+    $inject = fn.slice(0, last);
+  } else {
+    assertArgFn(fn, 'fn', true);
+  }
+  return $inject;
+}
+{% endcode %}
+</p>
+
+<p>
+  {{ therefore() }} If you pass a function to <code>annotate</code> it will convert that function to a string and use regular expressions to get the names of the arguments.
+</p>
+
+<p>
+  I should note, however, that the practice of depending on argument names for injection is discouraged (because of how the names get munged during minification).  It makes the code look cleaner, though.  Maybe we should work on changing minification to handle this introspective kind of injection.
+</p>
+
+
+
+
+<h2>Which functions have it?  Which don't?</h2>
+
+<p>
+  When you're just starting with AngularJS, it's a little frustrating that some functions are magic (i.e. are called with injection) and some are seemingly inert.  For instance, when writing a directive, <code>link</code> is not called with dependency injection, but <code>controller</code> is.
+</p>
+
+<p>
+  The provider methods are called with injection (<code>factory</code>, <code>value</code>, etc...).  And directive controllers are called with injection.  From the <a href="http://docs.angularjs.org/guide/di" target="_blank">official docs</a>:
+  <blockquote>DI is pervasive throughout Angular. It is typically used in controllers and factory methods.</blockquote>
+</p>
+
+<p>
+  {{ therefore() }} Sadly, the only way to know if a function is called with dependency injection is to... know.  Read the docs or the source, and build up an ample supply of doing it wrong :)
+</p>
+
+
+<h2 style="text-decoration: line-through;">Namespacing</h2>
+
+<p>
+  Modules provided to an injector will stomp on each other's providers:
+
+{% code('javascript') %}
+// Run this in a JavaScript console (on a page that has AngularJS)
+
+function mineFor(Thing) {
+    return "I found " + Thing + "!";
+}
+
+
+// Make two modules that each define a Thing provider
+var good_module = angular.module('good', []);
+good_module.value('Thing', 'gold');
+
+var bad_module = angular.module('bad', []);
+bad_module.value('Thing', 'sour milk');
+
+// Make an injector
+var injector = angular.injector(['good', 'bad']);
+
+injector.invoke(mineFor);
+// -> "I found sour milk!"
+{% endcode %}
+</p>
+
+<p>
+  I don't know if this is by design or if there are plans to address it.  Be aware of it.
+</p>
+
+
+
+<h2>In summary</h2>
+
+<p>
+    {{ therefore() }} Dependency injection in AngularJS is roughly equivalent to
+    other languages' including and importing, but scoped to functions.  Some of the magic is accomplished by exploiting <code>function.toString()</code> and regular expressions.
+</p>
+
+<p>
+  Read the <a href="http://docs.angularjs.org/guide/di" target="_blank">official doc about Dependency Injection</a> for some of the motivation behind its use.
+</p>
+

@@ -1,0 +1,256 @@
+title:Angular service or factory?
+---
+
+{% macro showAndRunJs() %}
+{% set thecode = caller() %}
+{% code('javascript') %}
+{{ thecode }}{% endcode %}
+<script>
+{{ thecode }}
+</script>
+{% endmacro %}
+
+<img style="border: 0; box-shadow: none;" src="http://pixabay.com/static/uploads/photo/2012/04/18/02/19/man-36570_150.png">
+
+<p>tl;dr is at the end</p>
+
+<p>
+In various <a href="http://angularjs.org" target="_blank">AngularJS</a> tutorials and documentation, the authors choose to use <code>service</code> or <code>factory</code> but don't explain <em>why</em> you would use one or the other.  Few mention that <code>value</code> and <code>constant</code> are also options.
+</p>
+
+<p>
+    Let's see why you would use one over the other.  We should also understand how providers work:
+</p>
+
+<h2>provider</h2>
+
+<p>Here's the source for the <code>provider</code> method:</p>
+
+{% code('javascript') %}
+function provider(name, provider_) {
+    if (isFunction(provider_) || isArray(provider_)) {
+        provider_ = providerInjector.instantiate(provider_);
+    }
+    if (!provider_.$get) {
+        throw Error('Provider ' + name + ' must define $get factory method.');
+    }
+    return providerCache[name + providerSuffix] = provider_;
+}
+{% endcode %}
+
+<p>
+    <code>name</code> is a string.  <code>provider_</code>
+    can be one of three things:
+    <ol>
+        <li>
+            function
+            <p>
+                If a function is passed in, the function is called with <a href="http://docs.angularjs.org/guide/di" target="_blank">dependency injection</a>
+                and should return an object with a <code>$get</code> method.
+            </p>
+        </li>
+        <li>
+            array
+            <p>
+                An array will be treated like a function using <a href="http://docs.angularjs.org/guide/di" target="_blank">Inline Annotation</a>.  It must
+                also return an object with a <code>$get</code> method.
+            </p>
+        </li>
+        <li>
+            object
+            <p>
+                If an object is passed in, it is simply expected to have a <code>$get</code> method.
+            </p>
+        </li>
+    </ol>
+</p>
+
+<p>
+    Whatever the second arg to <code>provider</code> is, you eventually end up with an object that has a <code>$get</code> method.  Here's an example showing what happens:
+</p>
+
+    {% code('javascript') %}
+// You can run this
+
+// Create a module
+var hippo = angular.module('hippo', []);
+
+// Register an object provider
+hippo.provider('awesome', {
+    $get: function() {
+        return 'awesome data';
+    }
+});
+
+// Get the injector (this happens behind the scenes in angular apps)
+var injector = angular.injector(['hippo', 'ng']);
+
+// Call a function with dependency injection
+injector.invoke(function(awesome) {
+    console.log('awesome == ' + awesome);
+});
+{%- endcode %}
+
+<p>
+    Once you understand providers you will see that <code>factory</code>,
+    <code>service</code>, <code>value</code> and <code>constant</code> are
+    just convenience methods for making providers.
+</p>
+
+<h2>factory</h2>
+
+<p>Here's the source:</p>
+
+{% code('javascript') -%}
+function factory(name, factoryFn) {
+    return provider(name, { $get: factoryFn });
+}
+{%- endcode %}
+
+<p>
+    So it lets you shorten the <code>awesome</code> provider creation code to
+    this:
+</p>
+
+    {% code('javascript') %}
+hippo.factory('awesome', function() {
+    return 'awesome data';
+})
+{%- endcode %}
+
+<h2>service</h2>
+
+<p>Here's the source:</p>
+
+{% code('javascript') %}
+function service(name, constructor) {
+    return factory(name, ['$injector', function($injector) {
+        return $injector.instantiate(constructor);
+    }]);
+}
+{% endcode %}
+
+<p>
+    So it lets you make a factory that will instantiate a "class".
+    For example:
+</p>
+
+{% code('javascript') %}
+var gandalf = angular.module('gandalf', []);
+
+function Gandalf() {
+    this.color = 'grey';
+}
+Gandalf.prototype.comeBack = function() {
+    this.color = 'white';
+}
+
+gandalf.service('gandalfService', Gandalf);
+
+var injector = angular.injector(['gandalf', 'ng']);
+
+injector.invoke(function(gandalfService) {
+    console.log(gandalfService.color);
+    gandalfService.comeBack()
+    console.log(gandalfService.color);
+});
+{%- endcode %}
+
+<p>
+    The above code will instantiate <code>Gandalf</code>, but remember that everything that uses the service will get <strong>the same instance!</strong> (which is a good thing).
+</p>
+
+<h2>value</h2>
+
+<p>Here's the source:</p>
+
+{% code('javascript') %}
+function value(name, value) {
+    return factory(name, valueFn(value));
+}
+{%- endcode %}
+
+<p>
+    Using <code>value</code> would let you shorten the <code>awesome</code> provider
+    to:
+</p>
+
+{% code('javascript') %}
+hippo.value('awesome', 'awesome data');
+{% endcode %}
+
+
+<h2>constant</h2>
+
+<p>Here's the source</p>
+
+{% code('javascript') %}
+function constant(name, value) {
+    providerCache[name] = value;
+    instanceCache[name] = value;
+}
+{% endcode %}
+
+<p>
+    <code>constant</code> differs from <code>value</code> in that it's accessible during config.
+    Here's how you use it:
+</p>
+
+{% code('javascript') %}
+var joe = angular.module('joe', []);
+
+joe.constant('bobTheConstant', 'a value');
+joe.value('samTheValue', 'a different value');
+
+joe.config(function(bobTheConstant) {
+    console.log(bobTheConstant);
+});
+
+joe.config(function(samTheValue) {
+    console.log(samTheValue);
+});
+
+// This will fail with "Error: Unknown provider: samTheValue from joe"
+var injector = angular.injector(['joe', 'ng']);
+{% endcode %}
+
+<p>
+    Read Module Loading &amp; Dependencies in <a href="http://docs.angularjs.org/guide/module" target="_blank">the Modules doc</a> for more information on usage.
+</p>
+
+
+<h2>In summary</h2>
+
+<p>
+    If you want your function to be called like a normal function, use <code>factory</code>.
+    If you want your function to be instantiated with the <code>new</code> operator, use <code>service</code>.  If you don't know the difference, use <code>factory</code>.
+</p>
+
+<p>This is the (great) documentation for each function in the AngularJS source:
+<ol>
+    <li>
+        <code>factory</code> 
+        <p>
+            A short hand for configuring services if only `$get` method is required.
+        </p>
+    </li>
+    <li>
+        <code>service</code>
+        <p>
+            A short hand for registering service of given class.
+        </p>
+    </li>
+    <li>
+        <code>value</code>
+        <p>
+            A short hand for configuring services if the `$get` method is a constant.
+        </p>
+    </li>
+    <li>
+        <code>constant</code>
+        <p>
+            A constant value, but unlike {@link AUTO.$provide#value value} it can be injected into configuration function (other modules) and it is not interceptable by {@link AUTO.$provide#decorator decorator}.
+        </p>
+    </li>
+</ol>
+</p>

@@ -1,0 +1,299 @@
+title:Angular injection
+---
+
+{% macro showAndRunJs() %}
+{% set thecode = caller() %}
+{% code('javascript') %}
+{{ thecode }}{% endcode %}
+<script>
+{{ thecode }}
+</script>
+{% endmacro %}
+
+<p>tl;dr is marked throughout by &there4;</p>
+
+<p>
+    I don't like magical code.  AngularJS is magical.  I must fix this.
+</p>
+
+<img style="border: 0; box-shadow: none;" src="http://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Magic_wand.svg/200px-Magic_wand.svg.png">
+
+<p>
+    Dependency injection was one of <a href="http://angularjs.org" target="_blank">AngularJS's</a> first evil magicks I encountered.  The idea that calling
+    this function
+
+{% code('javascript') %}
+function myFunction($scope, $http) {
+    ...
+}
+{% endcode %}
+
+    will magically reach out to the universe and grab the correct values for
+    <code>$scope</code> and <code>$http</code> runs contrary to all the
+    JavaScript I've ever used.
+</p>
+
+<p>
+    So I dug in to discover the magicks.  And now it's not magic!  It's great!
+    It's rougly equivalent to <code>import</code> in Python or
+    <code>require</code> in Ruby.  Here's how it works:
+</p>
+
+
+<h2>Modules</h2>
+
+<p>
+    AngularJS groups injectable things together into modules.  The following
+    code will:
+    <ol>
+        <li>make a module named <code>woods</code></li>
+        <li>add a provider to the <code>woods</code> module named
+            <code>Eeyore</code>, which has a constant value</li>
+    </ol>
+
+{% code('javascript') %}
+var woods = angular.module('woods', []);
+woods.value('Eeyore', 'sad')
+{% endcode %}
+</p>
+
+<p>
+    Here's some of the source for the <code>module</code> function
+    plus context (see the
+    <a href="https://github.com/angular/angular.js/blob/v1.1.5/src/loader.js#L67" target="_blank">full source here</a> &mdash; the comments are helpful):
+{% code('javascript') %}
+// from setupModuleLoader()
+function ensure(obj, name, factory) {
+    return obj[name] || (obj[name] = factory());
+}
+
+// ...
+
+var modules = {};
+return function module(name, requires, configFn) {
+    // ...
+    return ensure(modules, name, function() {
+        // ...
+        var moduleInstance = {
+            // ...
+            requires: requires,
+            name: name,
+            provider: invokeLater('$provide', 'provider'),
+            factory: invokeLater('$provide', 'factory'),
+            service: invokeLater('$provide', 'service'),
+            value: invokeLater('$provide', 'value'),
+            constant: invokeLater('$provide', 'constant', 'unshift'),
+            filter: invokeLater('$filterProvider', 'register'),
+            controller: invokeLater('$controllerProvider', 'register'),
+            directive: invokeLater('$compileProvider', 'directive'),
+            // ...
+        };
+        // ...
+        return moduleInstance;
+        // ...
+    });
+};
+{% endcode %}
+</p>
+
+<p>
+    <ol>
+        <li>
+            The <code>ensure(obj, name, factory)</code> function makes sure that <code>obj</code> has an attribute named <code>name</code>, creating it by calling <code>factory</code> if it doesn't.
+        </li>
+        <li>
+            The <code>module(name, requires, configFn)</code> function adds a <code>moduleInstance</code> named <code>name</code> to the global-ish <code>modules</code> object (by using <code>ensure</code>).
+        </li>
+        <li>
+            Notice all the calls to <code>invokeLater('$provide', ...)</code>.  This will come up again below.
+        </li>
+    </ol>
+</p>
+
+<p>
+    &there4; <code>angular.module(...)</code> adds a module to some global-ish module registry.
+</p>
+
+
+<h2>Injectors</h2>
+
+<p>
+    Injectors find providers from among the modules it knows about.  By default, AngularJS creates an injector through the bootstrapping process.  We can also make an injector with <code>angular.injector()</code> and use it to access providers within modules:
+{% code('javascript') %}
+// Run this in a JavaScript console (on a page that has AngularJS)
+
+// Make a woods module with an Eeyore provider
+var woods = angular.module('woods', []);
+woods.value('Eeyore', 'sad')
+
+// Make an injector that knows about the 'woods' module.
+var injector = angular.injector(['woods'])
+
+// Get poor Eeyore out of the module
+injector.get('Eeyore');
+// -> "sad"
+{% endcode %}
+</p>
+
+<p>
+  The creation of injectors is somewhat recursive (and the code is a little hard to read).  So let's unroll it a little by starting at the deepest part of the recursion and working our way out.
+</p>
+
+
+<h2>Internal injector == cache + factory</h2>
+
+<p>
+  There's something called an internal injector.  Here's the simplified source for creating an internal injector (<a href="https://github.com/angular/angular.js/blob/v1.1.5/src/auto/injector.js#L536" target="_blank">full source</a>):
+{% code('javascript') %}
+function createInternalInjector(cache, factory) {
+  function getService(serviceName) {
+    // ...
+    if (cache.hasOwnProperty(serviceName)) {
+      // ...
+      return cache[serviceName];
+    } else {
+        // ...
+        cache[serviceName] = INSTANTIATING;
+        return cache[serviceName] = factory(serviceName);
+        // ...
+    }
+  }
+
+  function invoke(fn, self, locals){
+    // ...
+  }
+  // ...
+  function instantiate(Type, locals) {
+    // ...
+  }
+
+  return {
+    invoke: invoke,
+    instantiate: instantiate,
+    get: getService,
+    annotate: annotate,
+    // ...
+  };
+}
+{% endcode %}
+</p>
+
+<p>
+  <ol>
+    <li>
+      <code>getService(serviceName)</code> will either return the value of <code>cache[serviceName]</code> or else run <code>factory(serviceName)</code> to set the value in the cache (and then return it).  <code>factory</code> is the second argument to <code>createInternalInjector</code>.
+    </li>
+    <li>
+      <code>invoke()</code> and <code>instantiate()</code> both get values for injectable things by calling <code>getService(...)</code>.  That code isn't shown &mdash; just believe me, okay?
+    </li>
+    <li>
+      <code>getService</code> is named <code>get</code> on the returned internal injector.
+    </li>
+  </ol>
+</p>
+
+<p>
+  &there4; An internal injector is an object with a <code>get</code> method that will either compute the value of something (given its name) or else return the previously computed value from the cache.  And it has convenience methods <code>invoke</code> and <code>instantiate</code>.
+</p>
+
+
+<h2>Provider injector</h2>
+
+<p>
+  Here's the source for the provider injector (from <a href="https://github.com/angular/angular.js/blob/v1.1.5/src/auto/injector.js#L413" target="_blank">here</a>):
+
+{% code('javascript') %}
+      providerCache = {
+        $provide: {
+            provider: supportObject(provider),
+            factory: supportObject(factory),
+            service: supportObject(service),
+            value: supportObject(value),
+            constant: supportObject(constant),
+            decorator: decorator
+          }
+      },
+      providerInjector = (providerCache.$injector =
+          createInternalInjector(providerCache, function() {
+            throw Error("Unknown provider: " + path.join(' <- '));
+          })),
+{% endcode %}
+</p>
+
+<p>
+  <ol>
+    <li>
+      The provider injector is an internal injector whose second arg (the <code>factory</code> passed to <code>createInternalInjector</code>) raises an error when called.  So, it doesn't know how to make anything.
+    </li>
+    <li>
+      Thankfully, the provider injector is given a cache with <code>$provide</code> in it.  Remember (from the Modules section above) all the <code>invokeLater('$provide',...)</code> calls when a module is created?  The <code>'$provide'</code> they reference is the <code>$provide</code> in this <code>providerCache</code>.
+    </li>
+    <li>
+      I won't go into the details of what the <code>supportObject()</code> calls do (in brief, it wraps the passed-in function such that you can either call it with <code>(string, x)</code> or <code>(object, x)</code>).  For the magic being divulged in this post, <nobr><code>supportObject(foo)('big', 'teeth')</code></nobr> is equivalent to <nobr><code>foo('big', 'teeth')</code></nobr>.
+    </li>
+  </ol>
+</p>
+
+<p>
+  &there4; A provider injector doesn't know how to make anything not already in its cache, but has a cache with some things in it: notably <code>provider</code>.
+</p>
+
+
+<h2>provider</h2>
+
+<p>
+  Each of the things in the <code>providerCache</code> wrapped in <code>supportObject</code> (except <code>constant</code>) are special-case versions of <code>provider</code>, which looks like this (<a href="https://github.com/angular/angular.js/blob/v1.1.5/src/auto/injector.js#L453" target="_blank">full source</a>):
+{% code('javascript') %}
+function provider(name, provider_) {
+  if (isFunction(provider_) || isArray(provider_)) {
+    provider_ = providerInjector.instantiate(provider_);
+  }
+  // ...
+  return providerCache[name + providerSuffix] = provider_;
+}
+{% endcode %}
+</p>
+
+<p>
+  &there4; <code>provider</code> adds things to the <code>providerCache</code> suffixed with <code>providerSuffix</code>.  And if it needs to, it uses the <code>providerInjector</code> to instantiate providers which are functions.
+</p>
+
+
+
+
+
+
+<h2>Instance injector</h2>
+
+<p>
+  One step up the recursive ladder from the provider injector is the instance injector.  Here's the code that makes the <code>instanceInjector</code> (<a href="https://github.com/angular/angular.js/blob/v1.1.5/src/auto/injector.js#L427" target="_blank">full source</a>):
+
+{% code('javascript') %}
+      instanceCache = {},
+      instanceInjector = (instanceCache.$injector =
+          createInternalInjector(instanceCache, function(servicename) {
+            var provider = providerInjector.get(servicename + providerSuffix);
+            return instanceInjector.invoke(provider.$get, provider);
+          }));
+{% endcode %}
+</p>
+
+
+  
+
+<h2>Invoke / Annotate</h2>
+
+<h2>Which functions have it?  Which don't?</h2>
+
+
+// You can run this in the JavaScript console on a page that has AngularJS
+
+<h2>In summary</h2>
+
+<p>
+    Dependency injection in AngularJS is roughly equivalent to
+    other languages' including and importing, but scoped to functions.
+
+    XXX
+</p>
+
