@@ -1,0 +1,63 @@
+title:Backdoor in Production?
+---
+
+
+<h2>Problem</h2>
+
+<p>
+  I use OAuth2 for authentication in my Python webapp, which means that signing in to my app requires authenticating with an external OAuth2 provider (e.g. Google/Facebook). I face at least two problems when developing:
+  <ol>
+    <li>
+      I frequently program without an Internet connection (so the normal OAuth2 providers are unavailable)
+    </li>
+    <li>
+      I want to test my code on fresh accounts (and I don't want to manage a handful of legitimate Google accounts just for testing).
+    </li>
+  </ol>
+</p>
+
+<h2>Backdoor</h2>
+
+<p>
+  So I've written a backdoor that I can add to a normal app such that visiting this url
+</p>
+
+{% code('bash') %}
+http://127.0.0.1:8080/_backdoor/foo@foo.com/
+{% endcode %}
+
+<p>
+  is equivalent to authenticating as <code>foo@foo.com</code> and visiting
+</p>
+
+{% code('bash') %}
+http://127.0.0.1:8080/
+{% endcode %}
+
+<h2>Protection</h2>
+
+<p>
+  It would be very bad if this backdoor code was ever used on a production app.  So I've put all the backdoor code in <code>myapp/fake.py</code> which starts with code like this:
+</p>
+
+{% code('python') %}
+# myapp/fake.py
+import os
+assert os.environ['MYAPP_ALLOW_BACKDOOR'] == 'yes', "Backdoor disabled"
+{% endcode %}
+
+<p>
+  This code make it impossible to import anything from <code>myapp/fake.py</code> unless I have set the environment variable <code>MYAPP_ALLOW_BACKDOOR</code> to <code>yes</code>.  By default, then, the backdoor code is unusable.  I'm sure there's an equivalent in languages other than Python.
+</p>
+
+
+<h2>Real solution</h2>
+
+<p>
+  I can see a number of problems with my approach, but the most glaring is this:  If I really want to ensure that a backdoor doesn't make it into production, I shouldn't write a backdoor in the first place.
+</p>
+
+<p>
+  A more secure (and close to the normal flow) solution would be to host an OAuth2 provider in the development environment.
+</p>
+
