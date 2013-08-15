@@ -1,0 +1,108 @@
+title:Practical event-driven programming with Python and Twisted
+---
+
+{% set src='posts/practical.twisted' %}
+
+{% macro srcfile(name, run=False) %}
+<p>
+{% code('python') %}{% shell('cat', src + '/' + name) %}{% endshell %}{% endcode %}
+</p>
+{% if run %}
+<p>
+  Output:
+{% code('text') %}{% shell('python', src + '/' + name) %}{% endshell %}{% endcode %}
+</p>
+{% endif %}
+{% endmacro %}
+
+<h2>Introduction</h2>
+
+<p>
+  A article from 2008 entitled <a href="http://www.ibm.com/developerworks/aix/library/au-threadingpython/" target="_blank">Practical threaded programming with Python</a> was posted to HN today.  And I thought, "how would those examples look with Twisted?"
+</p>
+
+<p>
+  For a great explanation about how Twisted does concurrency, see <a href="http://krondo.com/?page_id=1327" target="_blank">krondo's Twisted Introduction</a>.  On to the code: 
+</p>
+
+
+<h2>Hello World</h2>
+
+<p>
+  The <a href="http://www.ibm.com/developerworks/aix/library/au-threadingpython/#N1007E" target="_blank">first example in the article</a> demonstrates that threads have IDs.  Since we're not using threads, the most equiavelent way to do the same thing with Twisted is to not use Twisted at all:
+</p>
+
+{{ srcfile('hello_example.py', run=True) }}
+
+
+<h2>Using queues</h2>
+
+
+<p>
+  The <a href="http://www.ibm.com/developerworks/aix/library/au-threadingpython/#N100AA" target="_blank">next example</a> shows first a <a href="http://www.ibm.com/developerworks/aix/library/au-threadingpython/#url_fetch_serial" target="_blank">serial approach</a> and then a <a href="http://www.ibm.com/developerworks/aix/library/au-threadingpython/#url_fetch_threaded" target="_blank">threaded approach</a> to "grab a URL of a website, and print out the first 1024 bytes of the page."  Here are the synchronous/serial and threaded versions.
+</p>
+
+<p>
+  I should note that I've modified them to get all the page (instead of the first 1024 bytes) and to print a hash of the content (so as not to clutter up this post).  It's interesting that only apple.com and ibm.com return the same hash every time.
+</p>
+
+<h3>Synchronous version</h3>
+{{ srcfile('serialurlfetch.py', run=True) }}
+
+
+<h3>Threaded version</h3>
+{{ srcfile('threaded_url_fetch.py', run=True) }}
+
+
+<h3>Twisted version</h3>
+<p>
+  Here's one way to do the same thing with Twisted:
+</p>
+
+{{ srcfile('tx_url_fetch.py', run=True) }}
+
+
+<p>
+  The run times of the threaded version and the Twisted version are comparable.  Running them each multiple times, sometimes the threaded version is faster and sometimes the Twisted version is faster.  They are both consistently faster than the synchronous version.  Either way, this isn't a great benchmark and doesn't say much about how ansynchronous v. threaded will work in your particular case.
+</p>
+
+
+<h2>Working with multiple queues</h2>
+
+
+<p>
+  The article's <a href="http://www.ibm.com/developerworks/aix/library/au-threadingpython/#N100FF" target="_blank">third bit of code</a> shows how to use multiple queues to get the URL's body in one thread, then process it in another thread.
+</p>
+
+<h3>Threaded version</h3>
+{{ srcfile('threaded_multi_queue.py', run=True) }}
+
+<h3>Twisted version</h3>
+<p>
+  For this simple example, it makes sense to just do the processing right after receiving the body.  That would look like this:
+</p>
+{{ srcfile('tx_multi_queue1.py', run=True) }}
+
+<p>
+  (As with the previous examples, neither the threaded nor the Twisted version are much different in speed.)
+</p>
+
+<h2>Hey!</h2>
+<p>
+  "Hey!  Those aren't the same!" I hear you say.  You are right.  They are not.  The threaded version could extract the title in <code>ThreadUrl.run</code> instead of putting the content in queue for a <code>DatamineThread</code>.
+</p>
+
+<p>
+  I think the author was trying to show how you can make two threads work together on something... big?  I haven't come up with a problem where it makes sense to write something in the Twisted version other than <code>d.addCallback(printTitle, ...)</code>.  If you have an idea post a comment, and I'll happily update this post (or make another post).
+</p>
+
+
+<h2>Conclusion</h2>
+
+<p>
+  You can do things with threading.  You can do things with Twisted.  You should investigate Twisted (mostly for reasons not mentioned in this post).  As noted above, <a href="http://krondo.com/?page_id=1327" target="_blank">krondo's Twisted Introduction</a> is good, or there's some <a href="http://iffycan.blogspot.com/p/bite-sized-twisted-index.html" target="_blank">stuff I've written</a>.
+</p>
+
+<p>
+  Also, if anyone can think of a better scenario for the two-kinds-of-thread-workers model, I'll update (or post again) with what a Twisted version might look like.
+</p>
