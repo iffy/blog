@@ -1,0 +1,90 @@
+title:How I use threads in Python.  (Using Twisted to mine Bitcoin)
+---
+
+{% set src='src/toyminer' %}
+
+{% macro runfile(name) %}
+{% code('text') %}{% shell('python', src + '/' + name) %}{% endshell %}{% endcode %}
+{% endmacro %}
+
+{% macro srcfile(name, run=False) %}
+<p>
+{% code('python') %}{% shell('cat', src + '/' + name) %}{% endshell %}{% endcode %}
+</p>
+{% if run %}
+<p>
+  Output:
+{{ runfile(name) }}
+</p>
+{% endif %}
+{% endmacro %}
+
+<img src="http://farm3.staticflickr.com/2187/2317380018_3f6e839e61_z.jpg?zz=1" border="0" style="border: 0; width: 100%;">
+<div style="font-size: 60%; color: #666; text-align: right;">(image by <a href="http://www.flickr.com/photos/geishaboy500/" target="_blank">http://www.flickr.com/photos/geishaboy500/</a>)</div>
+
+<h2>tl;dr</h2>
+
+<p>
+    I don't always use threads in Python, but when I do, I use them like this:
+</p>
+
+{{ srcfile('threads1.py', run=True) }}
+
+
+<h2>What I really do</h2>
+
+<p>
+  I use <code>deferToThread</code> as shown above when
+  <ol>
+    <li>I'm lazy / in a hurry</li>
+    <li>I want to use a synchronous library within Twisted</li>
+    <li>or I'm not using <a href="https://github.com/itamarst/crochet/" target="_blank">crochet</a></li>
+  </ol>
+
+  Usually though, I try to avoid threads when possible for at least these reasons:
+  <ol>
+    <li>Threads are <a href="http://stackoverflow.com/questions/323972/is-there-any-way-to-kill-a-thread-in-python" target="_blank">hard to kill</a>.  (or annoying to kill at least)</li>
+    <li>Threaded programs are <a href="http://en.wikipedia.org/wiki/Deterministic_system" target="_blank">not deterministic</a> and it is easier to debug problems that are deterministic.  Consider this program:
+      {{ srcfile('threads_deterministic.py') }}
+      Which produces this output:
+      {{ runfile('threads_deterministic.py') }}
+      And this output:
+      {{ runfile('threads_deterministic.py') }}
+    </li>
+  </ol>
+
+  I suppose you can debate my reasons, but my goal isn't to bash on threads as much as to show the nice alternative Twisted provides.
+</p>
+
+<h2>Bitcoin Mining</h2>
+
+<p>
+  To showcase what's possible without threads, I'm going to do some <a href="http://bitcoin.org/en/" target="_blank">Bitcoin</a> mining.  Well, a fake approximation of Bitcoin mining.  Here's the problem:
+</p>
+
+
+<blockquote>
+  Given a SHA (<code>H</code>), an integer difficulty (<code>d</code>) and an integer scale (<code>S</code>), find a string of bytes (<code>t</code>) that will satisfy this equation:
+  {% code('text') %}int(SHA(H + t)) > (S - d) * (MAX_SHA / S){% endcode %}
+  where <code>MAX_SHA</code> is <code>0xffffffffffffffffffffffffffffffffffffffff</code>.
+</blockquote>
+
+<p>
+  The lower the <code>d</code> the harder the problem.  The higher the <code>S</code> the harder the problem.  So <code>d = 1</code>, <code>S = 100</code> is an easier problem and <code>d = 1</code>, <code>S = 100000</code> is a harder problem.
+</p>
+
+<p>
+  Here's how to test for a valid answer:
+  {{ srcfile('toyminer.git/toyminer/validate.py') }}
+</p>
+
+<p>
+  And here's a synchronous solver:
+  {{ srcfile('toyminer.git/toyminer/sync.py') }}
+</p>
+
+<h2>Threaded</h2>
+
+<p>
+  We can easily make a <code>ThreadedMiner</code> from the existing <code>SyncMiner</code>.
+</p>
