@@ -1,15 +1,19 @@
-title:How I use threads in Python.  (Using Twisted to mine Bitcoin)
+title:How I use threads in Python.  (Or: using Twisted to mine Bitcoin)
 ---
 
 {% set src='src/toyminer' %}
 
-{% macro runfile(name) %}
-{% code('text') %}{% shell('python', src + '/' + name) %}{% endshell %}{% endcode %}
+{% macro diff(f1, f2) %}
+{% code('diff') %}{% shell('diff', '-u', src + '/' + f1, src + '/' + f2) %}{% endshell %}{% endcode %}
 {% endmacro %}
 
-{% macro srcfile(name, run=False) %}
+{% macro runfile(name, executable='python') %}
+{% code('text') %}{% shell(executable, src + '/' + name) %}{% endshell %}{% endcode %}
+{% endmacro %}
+
+{% macro srcfile(name, run=False, code='python') %}
 <p>
-{% code('python') %}{% shell('cat', src + '/' + name) %}{% endshell %}{% endcode %}
+{% code(code) %}{% shell('cat', src + '/' + name) %}{% endshell %}{% endcode %}
 </p>
 {% if run %}
 <p>
@@ -25,10 +29,14 @@ title:How I use threads in Python.  (Using Twisted to mine Bitcoin)
 <h2>tl;dr</h2>
 
 <p>
-    I don't always use threads in Python, but when I do, I use them like this:
+  I don't always use threads in Python, but when I do, I use them like this:
 </p>
 
 {{ srcfile('threads1.py', run=True) }}
+
+<p>
+  Also, if you've only ever used threads, you will probably be interested in Twisted.
+</p>
 
 
 <h2>What I really do</h2>
@@ -41,7 +49,7 @@ title:How I use threads in Python.  (Using Twisted to mine Bitcoin)
     <li>or I'm not using <a href="https://github.com/itamarst/crochet/" target="_blank">crochet</a></li>
   </ol>
 
-  Usually though, I try to avoid threads when possible for at least these reasons:
+  Usually though, I try to avoid threads for at least these reasons:
   <ol>
     <li>Threads are <a href="http://stackoverflow.com/questions/323972/is-there-any-way-to-kill-a-thread-in-python" target="_blank">hard to kill</a>.  (or annoying to kill at least)</li>
     <li>Threaded programs are <a href="http://en.wikipedia.org/wiki/Deterministic_system" target="_blank">not deterministic</a> and it is easier to debug problems that are deterministic.  Consider this program:
@@ -53,13 +61,13 @@ title:How I use threads in Python.  (Using Twisted to mine Bitcoin)
     </li>
   </ol>
 
-  I suppose you can debate my reasons, but my goal isn't to bash on threads as much as to show the nice alternative Twisted provides.
+  I suppose you can debate my reasons, but my goal isn't to bash on threads.  My intent is to show you the nice alternative Twisted provides.
 </p>
 
 <h2>Bitcoin Mining</h2>
 
 <p>
-  To showcase what's possible without threads, I'm going to do some <a href="http://bitcoin.org/en/" target="_blank">Bitcoin</a> mining.  Well, a fake approximation of Bitcoin mining.  Here's the problem:
+  To showcase what's possible without threads, I'm going to do some <a href="http://bitcoin.org/en/" target="_blank">Bitcoin</a> mining.  Well, a fake approximation of Bitcoin mining.  All the following code is on Github <h1>XXXXXXX</h1>.  Here's the problem:
 </p>
 
 
@@ -79,12 +87,143 @@ title:How I use threads in Python.  (Using Twisted to mine Bitcoin)
 </p>
 
 <p>
-  And here's a synchronous solver:
+  And here's a synchronous function (<code>mine</code>) to find solutions:
+  {{ srcfile('toyminer.git/toyminer/solver.py') }}
+</p>
+
+
+
+
+<h2>Jobs</h2>
+
+<p>
+  When a mining request happens, I want to be able to see the progress/status of the request.  Here's an object for keeping track of that stuff:
+  {{ srcfile('toyminer.git/toyminer/jobs.py') }}
+</p>
+
+
+<h2>Miner</h2>
+
+<p>
+  I'm going to define a Miner as any object with a <code>mine(job)</code> method.  So here's what a synchronous miner looks like:
+  <a name="syncminer"></a>
   {{ srcfile('toyminer.git/toyminer/sync.py') }}
 </p>
 
-<h2>Threaded</h2>
+<p>
+  And here's a Miner that appropriately sets the <code>status</code> and <code>miner</code> attributes of <code>Jobs</code> it is given:
+  {{ srcfile('toyminer.git/toyminer/wrapper.py') }}
+</p>
+<p>
+  It may seem silly to split this functionality from <code>SyncMiner</code>, but you'll see why this is a valuable separation below.
+</p>
+
+
+
+<h2>Mining Pool</h2>
 
 <p>
-  We can easily make a <code>ThreadedMiner</code> from the existing <code>SyncMiner</code>.
+  Because I want to have many miners, I'm going to make a special kind of Miner that pools other miners:
+  {{ srcfile('toyminer.git/toyminer/pool.py') }}
+</p>
+
+<p>
+  This <code>MinerPool</code> allows you to add or remove miners at any time (even while they are processing a job).  And you can list all the miners currently in the pool.
+</p>
+
+
+
+
+<h2>Dig #1</h1>
+
+<p>
+  Putting all those pieces together, let's do some mining:
+  {{ srcfile('toyminer.git/dig1.py', run=True) }}
+</p>
+
+<p>
+  Well, it works.  But everything is sychronous and sequential.  So let's use threads Twisted-style to make it asynchronous.
+</p>
+
+
+
+<h2>Dig #2 with Threads</h2>
+
+<p>
+  Here's <code>ThreadedMiner</code>:
+  {{ srcfile('toyminer.git/toyminer/threaded.py') }}
+</p>
+
+<p>
+  Please notice how similar this is to the <a href="#syncminer"><code>SyncMiner</code></a>.  And since a miner is "something that has a <code>mine(job)</code>," <code>ThreadedMiner</code> is a drop-in replacement for <code>SyncMiner</code>.
+  {{ diff('toyminer.git/dig1.py', 'toyminer.git/dig2.py') }}
+  {{ srcfile('toyminer.git/dig2.py', run=True) }}
+</p>
+
+<p>
+  You can probably see from the output that the miners work on the jobs at the "same" time.  It's not actually doing two things at once because Python generally only uses one processor per process (as far as I understand it).  So, what if we wanted to use more than one processor?  We spawn another process!
+</p>
+
+
+<h2>Multi-process</h2>
+
+<p>
+  Let's make a script (<code>mine.py</code>) that does processing from command-line arguments and writes the output to stdout:
+  {{ srcfile('toyminer.git/mine.py') }}
+</p>
+
+<p>
+  And then we'll make a miner that spawns <code>mine.py</code> asynchronously:
+  {{ srcfile('toyminer.git/toyminer/proc.py') }}
+</p>
+
+<p>
+  Again, <code>SubprocessMiner</code> is a drop-in replacement for the other miners.  So we get this:
+  {{ diff('toyminer.git/dig2.py', 'toyminer.git/dig3.py') }}
+  {{ srcfile('toyminer.git/dig3.py', run=True) }}
+</p>
+
+<p>
+  We've gone from a synchronous miner to a threaded miner to a process-spawning miner.  What's the next step?  To have other computers do the mining for us!
+</p>
+
+
+<h2><a name="amp"></a>AMP</h2>
+
+<p>
+  There's lots of protocols for network communication.  One you may not have heard of is <a href="http://amp-protocol.net/" target="_blank">AMP (Asynchronous Messinag Protocol)</a>, an RPC protocol.  The <a href="http://twistedmatrix.com/documents/current/api/twisted.protocols.amp.html">Twisted implementation has good documentation</a>.
+</p>
+<p>
+  To add workers via AMP, we'll need an AMP server:
+  {{ srcfile('toyminer.git/toyminer/amp_server.py') }}
+</p>
+
+<p>
+  We'll need an AMP client:
+  {{ srcfile('toyminer.git/toyminer/amp_client.py') }}
+</p>
+
+<p>
+  We'll need a script for launching AMP clients (notice that we're reusing <code>SubprocessMiner</code>):
+  {{ srcfile('toyminer.git/launchampclient.py') }}
+</p>
+
+<p>
+  Finally, we'll need to launch our AMP-enabled server:
+  {{ srcfile('toyminer.git/dig-amp.py') }}
+</p>
+
+<p>
+  The end result is a server that will give out jobs to whichever clients connect to it:
+  {{ srcfile('toyminer.git/amp_demo.sh', code='bash') }}
+</p>
+<p>
+  Output:
+  {{ runfile('toyminer.git/amp_demo.sh', 'bash') }}
+</p>
+
+
+<h2>Web</h2>
+<p>
+  I want a web front-end for submitting mining requests, and I'm going to use <a href="https://github.com/twisted/klein" target="_blank">klein</a> because it's nice.
 </p>
