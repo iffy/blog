@@ -1,0 +1,176 @@
+title:Angular AJAX Upload
+---
+
+<table>
+  <tr>
+    <td width="50%">
+      <img style="border: 0; box-shadow: none; width: 100%;" src="http://upload.wikimedia.org/wikipedia/commons/8/83/Glossy_3d_blue_arrow_up.png">
+    </td>
+    <td>
+      <img style="border: 0; box-shadow: none; width:100%;" src="https://si0.twimg.com/profile_images/2149314222/square.png">
+    </td>
+  </tr>
+</table>
+
+<p>
+  Though the Internet would have you believe otherwise, uploading a file asynchronously from AngularJS isn't that hard.  I don't want fancy colors or previews or progress bars or any of that.  I want to upload a file from my AngularJS-backed webapp without reloading the page.  Also, I don't care about old browsers.  If you do, then this might not work for you.
+</p>
+
+<p>
+  After struggling with <a href="http://blueimp.github.io/jQuery-File-Upload/angularjs.html" target="_blank">blueimp's library</a> for way too long, I decided to just implement the part I needed.
+</p>
+
+<p>
+  Uploading a file using AJAX + AngularJS requires three things:
+  <ol>
+    <li>AJAX</li>
+    <li>AngularJS</li>
+    <li>AJAX + AngularJS</li>
+  </ol>
+</p>
+
+
+<h2>1. AJAX</h2>
+
+{% code('javascript') %}
+function upload(url, file) {
+  var formdata = new FormData(),
+      xhr = new XMLHttpRequest();
+
+  formdata.append('myfile', file);
+
+  xhr.onreadystatechange = function(r) {
+    if (4 === this.readyState) {
+      if (xhr.status == 200) {
+        // success
+      } else {
+        // failure
+      }
+    }
+  }
+  xhr.open("POST", url, true);
+  xhr.send(formdata);
+}
+{% endcode %}
+<p>
+  The file will be posted to the server as the parameter named <code>myfile</code>.
+</p>
+
+<h2>2. AngularJS</h2>
+
+{% code('javascript') %}
+app.directive('fileChange', function() {
+  return {
+    restrict: 'A',
+    link: function(scope, element, attrs) {
+      element.bind('change', function() {
+        scope.$apply(function() {
+          scope[attrs['fileChange']](element[0].files);
+        })
+      })
+    },
+  }
+})
+{% endcode %}
+
+<p>
+  If you use the above directive like this:
+  {% code('html') %}<input type="file" file-change="runSomething">{% endcode %}
+</p>
+<p>
+  when the user chooses a file to upload, <code>runSomething</code> will be called with a <code><a href="http://www.w3.org/TR/FileAPI/#dfn-filelist" target="_blank">FileList</a></code>.  You can pass the first element in that list as the second arg to the <code>upload</code> function above.
+</p>
+
+
+
+
+<h2>3. AJAX + AngularJS</h2>
+
+<p>
+  I can't provide a complete demo (because this blog isn't backed by a server I control).  But this will probably get you really close:
+</p>
+
+{% code('html') -%}
+<!DOCTYPE html>
+<html lang="en">
+<body ng-app="myapp" ng-controller="UploadCtrl">
+  <input type="file" file-change="upload">
+
+  <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.0.7/angular.min.js"></script>
+  <script>
+  // the javascript
+  var app = angular.module('myapp', []);
+
+  //
+  // Reusable Uploader service.
+  //
+  app.factory('Uploader', function($q, $rootScope) {
+    this.upload = function(url, file) {
+      var deferred = $q.defer(),
+          formdata = new FormData(),
+          xhr = new XMLHttpRequest();
+
+      formdata.append('file', file);
+
+      xhr.onreadystatechange = function(r) {
+        if (4 === this.readyState) {
+          if (xhr.status == 200) {
+            $rootScope.$apply(function() {
+              deferred.resolve(xhr);  
+            });
+          } else {
+            $rootScope.$apply(function() {
+              deferred.reject(xhr);  
+            });
+          }
+        }
+      }
+      xhr.open("POST", url, true);
+      xhr.send(formdata);
+      return deferred.promise;
+    };
+    return this;
+  })
+
+
+  //
+  // fileChange directive because ng-change doesn't work for file inputs.
+  //
+  app.directive('fileChange', function() {
+    return {
+      restrict: 'A',
+      link: function(scope, element, attrs) {
+        element.bind('change', function() {
+          scope.$apply(function() {
+            scope[attrs['fileChange']](element[0].files);
+          })
+        })
+      },
+    }
+  })
+
+  //
+  // Example controller
+  //
+  app.controller('UploadCtrl', function($scope, $http, Uploader) {
+    $scope.upload = function(files) {
+      var r = Uploader.upload('/uploads', files[0]);
+      r.then(
+        function(r) {
+          // success
+        },
+        function(r) {
+          // failure
+        });
+    }
+  });
+  </script>
+</body>
+</html>
+{%- endcode %}
+
+<h2>More</h2>
+
+<p>
+  You can do more things like handle multiple files, monitor progress, preview images, etc...  But if you don't need all that, and you are using modern browsers, this should do just fine.
+</p>
