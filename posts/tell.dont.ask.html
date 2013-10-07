@@ -1,0 +1,356 @@
+title:Tell, don't Ask.
+---
+
+<h2>tl;dr</h2>
+
+<p>
+  If you rely on <em>asking</em>, you're asking for trouble.  Instead:
+</p>
+
+<ol>
+  <li>Tell functions what to do, don't make them ask.</li>
+  <li>Tell processes what to do, don't make them ask.</li>
+  <li>Keep all your environment variable queries in one place, apart from the rest of the code.</li>
+</ol>
+
+
+<h2>You probably think this is obvious, but it isn't</h2>
+
+<p>
+  The principle of asking versus telling has many faces in programming.  Some of the faces are obvious&mdash;others are more subtle.  This articles moves from the more obvious to the more subtle.
+</p>
+
+<p>
+  So if you find yourself saying, "Well, duh!"  Keep reading.
+</p>
+
+<h2>Telling v. Asking</h2>
+
+<p>
+  This Python code illustrates <i>telling</i>:
+</p>
+
+{% code('python') -%}
+# teller.py
+import sqlite3
+
+def connectToDatabase(filename):
+    return sqlite3.connect(filename)
+{%- endcode %}
+
+<p>
+  The <code>connectToDatabase</code> function accepts an argument for the database connection details.  Other code that calls <code>connectionToDatabase</code> <strong>tells</strong> the function what it wants to do.
+</p>
+
+<p>
+  This Python code illustrates <i>asking</i>:
+</p>
+
+{% code('python') -%}
+# asker.py
+import sqlite3
+
+DATABASE_FILENAME='/tmp/database.sqlite'
+
+def connectToDatabase():
+    return sqlite3.connect(DATABASE_FILENAME)
+{%- endcode %}
+
+<p>
+  The <code>connectToDatabase</code> function in the above snippet is not told database connection details.  Instead, the function <strong>asks</strong> for the connection details&mdash;in this case, it asks from the global scope (which is <a href="https://www.google.com/search?q=avoid+global+state" target="_blank">a bad place to be in</a>).
+</p>
+
+<h2>Telling &gt; Asking</h2>
+
+<p>
+  <i>Telling</i>, as described above, is better than <i>Asking</i> for the following reasons:
+  <ol>
+    <li>
+      The code is more flexible for reuse.
+      <p>
+        I can more easily connect to different databases using the <code>teller.py</code>.
+      </p>
+    </li>
+    <li>
+      The code is easier to test.
+      <p>
+        Because <code>teller.py</code> is more flexible for reuse, I can use the code in tests very easily.
+      </p>
+    </li>
+    <li>
+      It's easier to know how to use the code and harder to use incorrectly.
+      <p>
+        It's obvious in <code>teller.py</code> that I must provide a filename to connect to (because of the argument spec of the function).  I can't accidentally connect to <code>/tmp/database.sqlite</code>.
+      </p>
+      <p>
+        To use <code>asker.py</code> I must know that the function looks at <code>DATABASE_FILENAME</code> either from reading the source code or the docstring of the function (which is absent in this case).  This would be much more difficult to do if <code>connectToDatabase</code> called other functions in other files which accessed a global variable.
+      </p>
+    </li>
+  </ol>
+</p>
+
+
+
+<h2>Abusing Environment Variables</h2>
+
+<p>
+  In <code>asker.py</code> the function <em>asks</em> for information from the global scope.  The global scope is just <em>one</em> place to get information from.  The environment is another.  Take a look at this:
+</p>
+
+{% code('python') -%}
+# asker-env.py
+import sqlite3
+import os
+
+def connectToDatabase():
+    return sqlite3.connect(os.environ['DATABASE_FILENAME'])
+{%- endcode %}
+
+<p>
+  Instead of asking for the database filename from the global scope, <code>asker-env.py</code> asks the environment of the process for the database filename.  This is more reusable that <code>asker.py</code> but is still not as good as <code>teller.py</code> because:
+  <ul>
+    <li>it still suffers from problem #3: that you must rely on the docstring or reading the source code to understand how to use it, and
+    </li>
+    <li>you can only have one connection per process.
+    </li>
+  </ul>
+</p>
+
+<p>
+  A better approach would be to <em>tell</em> the process which database filename to use as in this example:
+</p>
+
+{% code('python') -%}
+# teller-cli.py
+import sqlite3
+import argparse
+
+def connectToDatabase(filename):
+    return sqlite3.connect(filename)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('filename', help="Filename of the SQLite database")
+    args = parser.parse_args()
+    connectToDatabase(args.filename)
+{%- endcode %}
+
+<p>
+  <code>teller-cli.py</code> is better than <code>asker-env.py</code> because you can ask it (using <code><nobr>teller-cli.py --help</nobr></code>) what you need to tell it instead of having to read docstrings or source code.  Having a <code>--help</code> option which fully describes configuration options and is enforced when running the process is similar to <code>teller.py</code> having an argument spec that is enforced by Python.
+</p>
+
+
+<h2>But I thought environment variables were good...</h2>
+
+<p>
+  If you subscribe to <a href="http://12factor.net/config" target="_blank">The Twelve-Factor App's</a> ideas, you will store all your configuration in environment variables.  Or if you use <a href="https://travis-ci.org/" target="_blank">Travis-CI</a> or <a href="https://www.heroku.com/" target="_blank">Heroku</a> you will also have used environment variables to great effect.  Environment variables seem like a great way to do configuration.
+</p>
+
+<p>
+  Environment variables are cross-language and easy to change.  They have huge benefits.  Environment variables <em>are</em> a great way to do configuration!  It would be nice to leverage the great qualities of environment variables along with the great qualities of code that is <em>told</em>.
+</p>
+
+<p>
+  You can!
+</p>
+
+
+<h2>Convert Asking to Telling</h2>
+
+<p>
+  To write <em>Telling</em> code that also uses environment variables, restrict the environment variable querying to a single, documented place.  Consider this:
+</p>
+
+{% code('python') -%}
+# env-runner.py
+import argparse
+import os
+
+# Define ALL the environment variables this process might use.
+env_vars = [
+    ('DATABASE_FILENAME', 'Filename of the SQLite database.'),
+]
+
+# Read the environment.  This function must only be called from within this
+# module if you want to prevent writing asking code.
+def getArgs(environ, config):
+    ret = {}
+    for (env_name, description) in config:
+        try:
+            ret[env_name] = environ[env_name]
+        except KeyError:
+            print 'Missing env var: %s %s' % (env_name, description)
+            raise
+    return ret
+
+
+def main():
+  from teller import connectToDatabase
+  args = getArgs(os.environ, env_vars)
+  db = connectToDatabase(args['DATABASE_FILENAME'])
+  # ...
+{%- endcode %}
+
+<p>
+  The above snippet has all the benefits of telling code and the flexibility of asking code:
+  <ol>
+    <li>
+      The code is flexible for reuse.
+    </li>
+    <li>
+      The code is easy to test.
+    </li>
+    <li>
+      It's easy to know how to use this code and hard to use incorrectly.
+    </li>
+  </ol>
+</p>
+
+
+
+<h2>Real-world examples</h2>
+
+<p>
+  As proof that the concept of <em>Telling</em> instead of <em>Asking</em> is not obvious, here are some real-world examples (both good and bad):
+</p>
+
+
+<h3>Klein's improvement on Flask</h3>
+
+<p>
+  <a href="http://flask.pocoo.org/" target="_blank">Flask</a>, a micro web framework for Python, loves the global scope.  This is the Hello, World! from the front page:
+</p>
+
+{% code('python') -%}
+from flask import Flask
+app = Flask(__name__)
+
+@app.route("/")
+def hello():
+    return "Hello World!"
+
+if __name__ == "__main__":
+    app.run()
+{%- endcode %}
+
+<p>
+    And this is the <a href="http://flask.pocoo.org/docs/tutorial/dbcon/" target="_blank">recommended way for accessing a database</a>:
+</p>
+
+{% code('python') -%}
+from flask import g
+
+app = Flask(__name__)
+
+@app.before_request
+def before_request():
+    g.db = connect_db()
+
+@app.route("/")
+def hello():
+    db = g.db
+    # ...
+{%- endcode %}
+
+<p>
+  You use a package-global named <code>g</code>, which is "magical" and comes with appropriate warnings:
+</p>
+<blockquote>
+  We store our current database connection on the special <code>g</code> object that Flask provides for us. This object stores information for one request only and is available from within each function. Never store such things on other objects because this would not work with threaded environments. That special <code>g</code> object does some magic behind the scenes to ensure it does the right thing.
+  <cite><a href="http://flask.pocoo.org/docs/tutorial/dbcon/" target="_blank">http://flask.pocoo.org/docs/tutorial/dbcon/</a></cite>
+</blockquote>
+
+
+<p>
+  Consider the improvement offered by <a href="https://github.com/twisted/klein" target="_blank">Klein</a>, a similar micro web framework.  With Klein you can easily make apps with <a href="https://github.com/twisted/klein#non-global-state" target="_blank">Non-global state</a>:
+</p>
+
+{% code('python') -%}
+from klein import Klein
+
+class MyApp(object):
+
+    app = Klein()
+
+    def __init__(self, db_connection):
+        self.db_connection = db_connection
+
+    @app.route('/')
+    def hello(self, request):
+        db = self.db_connection
+        # ...
+{%- endcode %}
+
+<p>
+  There is no magical, global <code>g</code> here.  You can instantiate <code>MyApp</code> with a database connection, or even have three different instances of <code>MyApp</code> with three different database connections all running in the same app.
+</p>
+
+<p>
+  Klein lets you <em>tell</em> instead of <em>ask</em>.
+</p>
+
+
+
+
+<h3>Ansible</h3>
+
+<p>
+  <a href="http://www.ansibleworks.com/" target="_blank">Ansible</a> is a (really good) configuration management tool.  It's mostly straightforward, but it's easy to use it in an <em>asking</em> way&mdash;which becomes unmaintainable.
+</p>
+
+<p>
+  For instance, if in one of our tasks we want to download a resource from <code>http://dev.example.com</code> if we're in the development environment or from <code>https://production.example.com</code> if we're in the production environment, Ansible easily lets us do this:
+</p>
+
+{% code('yaml') %}
+# main.yml
+- name: Get the files
+  command: wget {{'{{ source_server }}'}}/thefile.tgz /tmp/thefile.tgz
+           creates=/tmp/thefile.tgz
+{% endcode %}
+
+<p>
+  The command <em>asks</em> for <code>source_server</code>.  This task likely lives in a role's task file, which could be in <code>roles/mymachine/tasks/main.yml</code>, deep within the directory structure of my configuration.  The problem is that I have no way of knowing (short of manually parsing the task file) when writing my inventory file or anything else that uses/includes <code>main.yml</code>, that <code>source_server</code> is a needed variable.
+</p>
+
+<p>
+  Ansible lets you <em>ask</em> yourself into an unmaintainable hole.  To be more maintainable, Ansible should provide a mechanism for specifying the parameters needed by tasks.  Perhaps something like:
+</p>
+
+{% code('yaml') %}
+# main-with-vars.yml
+- variables:
+  - name: source_server
+    description: URL of the server to download source files from.  For
+                 example: http://foo.com
+    default: http://example.com
+
+- name: Get the files
+  command: wget {{'{{ source_server }}'}}/thefile.tgz /tmp/thefile.tgz
+           creates=/tmp/thefile.tgz
+{% endcode %}
+
+<p>
+  Such a file would allow you to produce a list of all the configurable variables for a role/task and then be able to <em>tell</em> instead of <em>ask</em>.
+</p>
+
+
+
+<h3>AngularJS</h3>
+
+<p>
+  AngularJS does a lot to help you avoid <em>asking</em> through <a href="http://docs.angularjs.org/guide/di" target="_blank">dependency injection</a>.
+</p>
+
+
+<h3>Twisted's Reactor</h3>
+
+<p>
+  Twisted is currently working toward <a href="http://twistedmatrix.com/documents/current/api/twisted.internet.reactor.html" target="_blank">making the reactor not global</a> in an effort to make testing easier and perhaps allow for new features.
+</p>
+
+<h2>Conclusion</h2>
+
+<p>
+  In conclusion, read the tl;dr at the top :)  Also, do you have some example of <em>telling</em> v. <em>asking</em>?  Or counter-arguments?  Post a comment.
+</p>
