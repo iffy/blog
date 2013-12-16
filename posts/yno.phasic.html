@@ -1,0 +1,337 @@
+title:YNO-phasic Sleep
+---
+
+<style>
+a.citation, a.ref {
+  background: #bdc3c7;
+  font-size: 0.8em;
+  padding: 0.1em 0.3em;
+  margin-left: 0.1em;
+  font-weight: bold;
+  vertical-align: super;
+}
+a.ref {
+  font-size: 1em;
+  vertical-align: auto;
+  font-weight: normal;
+}
+.chart {
+  text-align: left;
+}
+.slice {
+  stroke: #000;
+  stroke-width: 0;
+}
+.awake {
+  fill: #f1c40f;
+}
+.asleep {
+  fill: #2c3e50;
+}
+
+path.line {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2;
+}
+</style>
+<script src="http://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+<script>
+function drawpie(elem, data) {
+  var w = 200,
+      h = 200,
+      r = 90;
+
+  var vis = d3.select(elem)
+    .append('svg:svg')
+    .data([data])
+      .attr('width', w)
+      .attr('height', h)
+    .append('svg:g')
+      .attr('transform', 'translate(' + r + ',' + r + ')');
+
+  var arc = d3.svg.arc()
+    .outerRadius(r);
+
+  var pie = d3.layout.pie()
+    .value(function(d) { return d.value; })
+    .sort(null);
+
+  var arcs = vis.selectAll('g.slice')
+    .data(pie)
+    .enter()
+      .append('svg:g')
+        .attr('class', function(d) { return 'slice ' + d.data.kind; });
+
+  arcs.append('svg:path')
+    .attr('d', arc);
+}
+function sleeptransition(elem, data, smooth) {
+  var h = 100,
+      w = 600,
+      pad = 5;
+
+  var x = d3.scale.linear().domain([0, 24]).range([pad, w-pad]);
+  var y = d3.scale.linear().domain([-1, 1]).range([h-pad, pad]);
+
+  var line = d3.svg.line()
+    .x(function(d) { return x(d.hour);})
+    .y(function(d) { return y(d.value);});
+  if (smooth == true) {
+    line.interpolate('basis');
+  }
+
+  var vis = d3.select(elem)
+    .append('svg:svg')
+    .attr('height', h)
+    .attr('width', w);
+  var gradient = vis.append('svg:defs')
+    .append('svg:linearGradient')
+      .attr('id', 'gradient')
+      .attr('x1', '0%')
+      .attr('y1', '0%')
+      .attr('x2', '100%')
+      .attr('y2', '0%')
+      .attr('spreadMethod', 'pad');
+
+  /* middle of the day */
+  gradient.append('svg:stop')
+    .attr('offset', '0%')
+    .attr('stop-color', '#f1c40f')
+    .attr('stop-opacity', 1);
+
+  /* start of evening */
+  gradient.append('svg:stop')
+    .attr('offset', '24%')
+    .attr('stop-color', '#f1c40f')
+    .attr('stop-opacity', 1);
+
+  /* start of night */
+  gradient.append('svg:stop')
+    .attr('offset', '26%')
+    .attr('stop-color', '#2c3e50')
+    .attr('stop-opacity', 1);
+
+  /* start of morning */
+  gradient.append('svg:stop')
+    .attr('offset', '74%')
+    .attr('stop-color', '#2c3e50')
+    .attr('stop-opacity', 1);
+
+  /* start of day */
+  gradient.append('svg:stop')
+    .attr('offset', '76%')
+    .attr('stop-color', '#f1c40f')
+    .attr('stop-opacity', 1);
+
+  /* middle of the day */
+  gradient.append('svg:stop')
+    .attr('offset', '100%')
+    .attr('stop-color', '#f1c40f')
+    .attr('stop-opacity', 1);
+
+  var g = vis.append('svg:g')
+    .attr('transform', 'translate(0, ' + 0 + ')');
+  g.append('rect')
+    .attr('width', w)
+    .attr('height', h)
+    .style('fill', 'url(#gradient)');
+
+  var paths = g.append('path')
+    .datum(data)
+    .attr('class', 'line')
+    .attr('d', line);  
+}
+</script>
+
+<p>
+  Recently, we've seen an increased interest in <a href="http://en.wikipedia.org/wiki/Polyphasic_sleep" target="_blank">polyphasic sleep</a>.  Proponents claim to be able to extract extra hours out of the day, as well as other benefits.  However, not as much interest has been paid to a more ancient and natural sleep pattern: <a href="http://en.wikipedia.org/wiki/Young_Needy_Offspring_phasic_sleep" target="_blank">Young Needy Offspring (YNO) phasic sleep</a>.
+</p>
+
+
+<h2>Tools</h2>
+
+<p>
+  <a href="http://www.intelclinic.com/" target="_blank"><img src="http://amd.c.yimg.jp/amd/20131205-00000067-mycomj-000-1-view.jpg"></a>
+  <br/>(&copy; <a href="http://www.intelclinic.com/" target="_blank">Intelclinic</a>)
+  <br/>
+  Unlike polyphasic sleep, which may require <a href="http://www.intelclinic.com/" target="_blank">additional equipment</a> to be effective, YNO-phasic sleep simply requires one or more offspring.  Typically more, younger offspring produce more dramatic results.
+</p>
+
+<h2>24-hour cycle</h2>
+
+<p>
+  The charts below show sample 24-hour cycles for monophasic, polyphasic and YNO-phasic sleep:
+
+  <table width="100%">
+    <tr>
+      <td class="chart" id="mono-chart1" width="33%"></td>
+      <td class="chart" id="poly-chart1" width="33%"></td>
+      <td class="chart" id="yno-chart1" width="33%"></td>
+    </tr>
+    <tr>
+      <td valign="top"><b>Monophasic</b><a class="citation" href="#foot-monochart">1</a>
+        <br/>8 hours of sleep followed by 16 hours of wakefulness</td>
+      <td valign="top"><b>Polyphasic (Biphasic TED)</b>
+        <br/>4 hours of sleep, 2 hours of wakefulness, 4 hours of sleep, 14 hours of wakefulness</td>
+      <td valign="top"><b>YNO-phasic</b>
+        <br/>~3 hours of sleep followed by random intervals of wakefulness and sleep-like wakefulness.  At 6:15am, the offspring will awake for the day, fully rested and ready to play.</td>
+    </tr>
+  </table>
+</p>
+
+
+<h2>Sleep transitions</h2>
+
+<h3>Monophasic</h3>
+
+<p>
+  A preferred sleep cycle involves gentle transitions from sleep to
+  wakefulness.  The following chart shows a desirable monophasic sleep cycle.
+  <div id="mono-chart2"></div>
+  Note the gentle transitions from wakefulness down to sleeping and back up to wakefulness.
+</p>
+
+<h3>YNO-phasic</h3>
+
+<p>
+  YNO-phasic sleep cycles are characterized by abrupt changes from sleeping to wakefulness.  The return transition from wakefulness to sleeping does not happen
+  again until the next evening.
+  <div id="yno-chart2"></div>
+  Abrupt changes to wakefulness are typically caused by offspring producing highly audible noises, foul odors and surprisingly strong slaps to the face <a class="citation" href="#foot-ynooo">2</a>.  Not infrequently, changes to wakefulness also happen due to the discomfort caused by a spouse's hands lightly strangling the sleeper while moaning, "I can't take it anymore!" through clenched teeth.
+</p>
+
+
+<h2>Direct benefits</h2>
+
+<p>
+  Critics of YNO-phasic sleep<a class="citation" href="#foot-critics">3</a> claim that such sleep has no benefits, but it is obvious from research that this is unfounded.  YNO-phasic sleep provides several benefits:
+</p>
+
+<ul>
+  <li>
+    <b>Longer days</b>
+    <p>
+      As shown above, a person following YNO-phasic sleep will have more wakeful hours during the day, sometimes eliminating sleep altogether for several days (especially when the initial transition is made from monophasic to YNO-phasic sleep).  The implications for productivity are obvious.
+    </p>
+  </li>
+  <li>
+    <b>Reading time</b>
+    <p>
+      Many people wish they had more time to read.  YNO-phasic sleep offers ample opportunity for reading.  Just last night, at 3am, I was able to spend 30 minutes repeatedly reading <a href="http://en.wikipedia.org/wiki/Goodnight_Moon" target="_blank">Goodnight Moon</a>.  The kittens end up on the chair, and the mouse ends up looking out the window.
+    </p>
+  </li>
+  <li>
+    <b>Improved Resistance</b>
+    <p>
+      Those following YNO-phasic sleep build up resistence to <a href="http://en.wikipedia.org/wiki/Sleep_deprivation#Interrogation" target="_blank">some forms of torture</a>, and may earn credits toward bypassing portions of <a href="http://en.wikipedia.org/wiki/United_States_Navy_SEAL_selection_and_training#Phase_1:_Physical_Conditioning_.287_weeks.29" target="_blank">Navy SEAL training</a> or <a href="http://www.military.com/special-operations/army-ranger-training.html" target="_blank">Army Ranger Training</a>.
+    </p>
+  </li>
+</ul>
+
+
+
+<h2>Indirect benefits</h2>
+
+<p>
+  In addition to direct benefits of YNO-phasic sleep, people report many indirect benefits, such as:
+</p>
+
+<ul>
+  <li>
+    <b>Increased chance of progeny</b>
+    <p>
+      It has been proven that those who have offspring have a greater chance of having descendents than those who don't.
+    </p>
+  </li>
+  <li>
+    <b>Laughter</b>
+    <p>
+      The first time the offspring emits laughter<a class="citation" href="#foot-giggle">4</a> is very nice.  Subsequent times are also nice.
+    </p>
+  </li>
+  <li>
+    <b>Amazement</b>
+    <p>
+      After some time of <span style="text-decoration: line-through">enduring</span> following YNO-phasic sleep, adherents frequently report astonishment and surprise at what their offspring can do (e.g. <i>walking</i>, <i>talking</i>, <i>teasing</i>, <i>telling jokes</i>, <i>performing</i>, etc...)
+    </p>
+  </li>
+</ul>
+
+
+<h2>Notes</h2>
+
+<p>
+  This article has been peer reviewed (I had a peer review it).
+</p>
+
+<p>
+  <a class="ref" name="foot-monochart">1</a> Studies have shown that adherents to YNO-phasic sleep who are shown monophasic sleep diagrams exhibit increased levels of sarcasm and violence.
+</p>
+
+<p>
+  <a class="ref" name="foot-ynooo">2</a> Because of the abrupt and frequent nature of changes to wakefulness, adherents to YNO-phasic sleep have been known to vocalize the name during the night as "Why?! <a href="https://www.youtube.com/watch?v=WWaLxFIVX1s" target="_blank">Nooooo!</a>"
+</p>
+
+<p>
+  <a class="ref" name="foot-critics">3</a> Interestingly, the most ardent critics of YNO-phasic sleep are often the strictest adherents.  The reason for this overlap has yet to be researched.
+</p>
+
+<p>
+  <a class="ref" name="foot-giggle">4</a> also, <i>giggles</i>, <i>belly laughs</i>, <i>smiles</i>, <i>funny faces</i>.
+</p>
+
+<script type="text/javascript">
+drawpie('#mono-chart1', [
+  {kind: 'asleep', value: 8},
+  {kind: 'awake', value: 16}
+]);
+drawpie('#poly-chart1', [
+  {kind: 'asleep', value: 4},
+  {kind: 'awake', value: 2},
+  {kind: 'asleep', value: 4},
+  {kind: 'awake', value: 14},
+]);
+var data = [
+  {kind: 'asleep', value: 3},
+];
+var timesupatnight = 10.0;
+var night_time = 7;
+for (var i=0; i < timesupatnight; i++) {
+  var segment = night_time / timesupatnight;
+  var awake = Math.random() * segment;
+  data.push({kind: 'awake', value: awake});
+  data.push({kind: 'asleep', value: segment-awake});
+}
+data.push({kind: 'awake', value: 14});
+
+drawpie('#yno-chart1', data);
+
+</script>
+
+<script type="text/javascript">
+var data = [
+  {hour: 0, value: 1},
+  {hour: 10, value: 1},
+  {hour: 10.5, value: -1},
+  {hour: 18, value: -1},
+  {hour: 18.5, value: 1},
+  {hour: 24, value: 1},
+];
+sleeptransition('#mono-chart2', data, true);
+
+sleeptransition('#yno-chart2', [
+  {hour: 0, value: 0.7},
+  {hour: 10, value: 0.7},
+  {hour: 10.5, value: -1},
+  {hour: 13, value: -1},
+  {hour: 13.01, value: 1},
+  {hour: 13.5, value: 0},
+  {hour: 14, value: 0.5},
+  {hour: 15, value: -0.5},
+  {hour: 15.1, value: 1},
+  {hour: 17, value: 0.5},
+  {hour: 18.5, value: 0.5},
+  {hour: 24, value: 0.7},
+]);
+</script>
